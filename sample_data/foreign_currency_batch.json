@@ -1,0 +1,14 @@
+{
+  "acceptances": [
+    {"acceptance_id": "GR-100#1", "doc_no": "GR-100", "sku": "SKU-A", "currency": "USD",
+     "original_amount": "1000.00", "exchange_rate": "7.1000", "received_on": "2026-01-05"},
+    {"acceptance_id": "GR-101#1", "doc_no": "GR-101", "sku": "SKU-A", "currency": "USD",
+     "original_amount": "500.00", "exchange_rate": "7.2000", "received_on": "2026-01-20"},
+    {"acceptance_id": "GR-102#1", "doc_no": "GR-102", "sku": "SKU-C", "currency": "CNY",
+     "original_amount": "226.00", "exchange_rate": "1", "received_on": "2026-01-22"}
+  ],
+  "invoices": [
+    {"invoice_id": "IV-200#1", "doc_no": "IV-200", "sku": "SKU-A", "currency": "USD",
+     "original_amount": "1200.00", "exchange_rate": "7.3000", "invoiced_on": "2026-02-10"}
+  ]
+}

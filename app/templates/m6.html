@@ -1,27 +1,154 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="kpis">
-  <div class="kpi"><b>差异项</b><strong>2</strong><small>条</small></div>
-  <div class="kpi"><b>通过</b><strong>0</strong><small>条</small></div>
-  <div class="kpi"><b>隔离</b><strong>3</strong><small>条</small></div>
-  <div class="kpi"><b>规则版</b><strong>1.6</strong><small>v</small></div>
+  <div class="kpi"><b>验收行</b><strong>{{ summary.acceptances }}</strong><small>条</small></div>
+  <div class="kpi"><b>发票行</b><strong>{{ summary.invoices }}</strong><small>条</small></div>
+  <div class="kpi"><b>汇兑差异 CNY</b><strong>{{ summary.fx_difference }}</strong><small>单列</small></div>
+  <div class="kpi"><b>未开票原币</b><strong>{{ summary.open_original }}</strong><small>各币种合计</small></div>
 </section>
+
 <div class="grid grid--quad">
   <section class="panel">
-    <div class="panel__head"><h2>差异批次</h2><span class="state state--ok">通过</span></div>
+    <div class="panel__head">
+      <h2>验收录入（原币成本按收货日汇率）</h2>
+      <span class="state state--ok">收货日</span>
+    </div>
     <div class="panel__body panel__body--scroll">
-      <table class="ledger"><thead><tr><th>序号</th><th>业务键</th><th>状态</th><th class="num">值</th></tr></thead>
-      <tbody>{% for row in rows %}<tr><td class="num">{{ loop.index }}</td><td>{{ row.key }}</td><td>{{ row.status }}</td><td class="num">{{ row.value }}</td></tr>{% endfor %}</tbody></table>
+      <table class="ledger entry" id="acceptance-table">
+        <thead><tr>
+          <th>验收单号</th><th>货号</th><th>币种</th><th class="num">原币金额</th>
+          <th class="num">收货日汇率</th><th>收货日期</th><th class="num">成本 CNY</th>
+          <th class="num">已核销</th><th class="num">未核销</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for row in acceptances %}
+          <tr data-acceptance-id="{{ row.acceptance_id }}" data-version="{{ row.version }}">
+            <td><input name="doc_no" value="{{ row.doc_no }}" aria-label="验收单号" readonly></td>
+            <td><input name="sku" value="{{ row.sku }}" aria-label="货号" readonly></td>
+            <td><input name="currency" value="{{ row.currency }}" maxlength="3" size="4" aria-label="币种" readonly></td>
+            <td><input class="num" name="original_amount" value="{{ row.original_amount }}" aria-label="原币金额" readonly></td>
+            <td><input class="num" name="exchange_rate" value="{{ row.exchange_rate }}" aria-label="汇率" readonly></td>
+            <td><input name="received_on" value="{{ row.received_on }}" aria-label="收货日期" readonly></td>
+            <td class="num">{{ row.cost_cny }}</td>
+            <td class="num">{{ row.written_off }}</td>
+            <td class="num">{{ row.open_amount }}</td>
+            <td><input type="hidden" name="expected_balance" value="{{ row.open_amount }}">
+                <input type="hidden" name="version" value="{{ row.version }}"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="panel__actions">
+        <button class="btn" type="button" id="add-acceptance">+ 验收行</button>
+        <span class="panel__meta" id="stale-hint">已落账验收只读，避免改价污染成本</span>
+      </div>
     </div>
   </section>
-  <section class="panel panel--evidence">
-    <div class="panel__head"><h2>证据</h2><span class="panel__meta">7 条</span></div>
-    <div class="panel__body"><div class="evidence"><b>RUN-659-6</b><span>LINE 7</span><code>/api/reconcile</code></div><pre id="result">等待运行</pre></div>
+
+  <section class="panel">
+    <div class="panel__head">
+      <h2>发票录入（人民币应付按开票日汇率）</h2>
+      <span class="state state--ok">开票日</span>
+    </div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger entry" id="invoice-table">
+        <thead><tr>
+          <th>发票号</th><th>货号</th><th>币种</th><th class="num">原币金额</th>
+          <th class="num">开票日汇率</th><th>开票日期</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for row in invoices %}
+          <tr data-invoice-id="{{ row.invoice_id }}" data-posted="1">
+            <td><input name="doc_no" value="{{ row.doc_no }}" aria-label="发票号" readonly></td>
+            <td><input name="sku" value="{{ row.sku }}" aria-label="货号" readonly></td>
+            <td><input name="currency" value="{{ row.currency }}" maxlength="3" size="4" aria-label="币种" readonly></td>
+            <td><input class="num" name="original_amount" value="{{ row.original_amount }}" aria-label="原币金额" readonly></td>
+            <td><input class="num" name="exchange_rate" value="{{ row.exchange_rate }}" aria-label="汇率" readonly></td>
+            <td><input name="invoiced_on" value="{{ row.invoiced_on }}" aria-label="开票日期" readonly></td>
+            <td><span class="tag">已核销</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="panel__actions">
+        <button class="btn" type="button" id="add-invoice">+ 发票行</button>
+        <span class="panel__meta">按原币核销 · 同币种 FIFO · 尾差留最后一笔</span>
+      </div>
+    </div>
   </section>
+
+  <section class="panel panel--evidence">
+    <div class="panel__head"><h2>证据</h2><span class="panel__meta">原币核销</span></div>
+    <div class="panel__body">
+      <div class="evidence">
+        <b id="run-id">{{ run_id or "未落账" }}</b>
+        <span>成本 = 原币 × 收货日汇率</span>
+        <span>应付 = 原币 × 开票日汇率</span>
+        <span>汇兑差异 = 应付 − 成本（不与少开票混同）</span>
+        <code>POST /api/reconcile</code>
+      </div>
+      <pre id="result">{{ result_json or "等待运行" }}</pre>
+    </div>
+  </section>
+
   <section class="panel panel--status">
-    <div class="panel__head"><h2>原因分布</h2><span class="panel__meta">3 类</span></div>
-    <div class="panel__body"><div class="bar"><i style="width:85%"></i></div><div class="legend"><span>采纳 2</span><span>隔离 3</span></div></div>
+    <div class="panel__head"><h2>对账（按币种，不互抵）</h2><span class="state state--ok" id="balance-state">{{ "已全部核销" if fully_written and acceptances else "存在未核销原币" }}</span></div>
+    <div class="panel__body panel__body--scroll">
+      <table class="ledger">
+        <thead><tr>
+          <th>货号</th><th>币种</th><th class="num">验收原币</th><th class="num">已核销</th>
+          <th class="num">未开票</th><th class="num">成本 CNY</th><th class="num">应付 CNY</th>
+          <th class="num">汇兑差异</th><th>状态</th>
+        </tr></thead>
+        <tbody>
+        {% for row in groups %}
+          <tr><td>{{ row.sku }}</td><td>{{ row.currency }}</td><td class="num">{{ row.received }}</td>
+          <td class="num">{{ row.written_off }}</td><td class="num">{{ row.uninvoiced }}</td>
+          <td class="num">{{ row.cost_cny }}</td><td class="num">{{ row.payable_cny }}</td>
+          <td class="num {{ 'pos' if row.fx_difference_cny.startswith('-') else 'neg' }}">{{ row.fx_difference_cny }}</td>
+          <td>{{ row.status }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <table class="ledger">
+        <thead><tr><th>币种合计</th><th class="num">验收原币</th><th class="num">已核销</th>
+        <th class="num">未开票</th><th class="num">成本 CNY</th><th class="num">应付 CNY</th><th class="num">汇兑差异</th></tr></thead>
+        <tbody>
+        {% for row in currency_totals %}
+          <tr><td>{{ row.currency }}</td><td class="num">{{ row.received }}</td><td class="num">{{ row.written_off }}</td>
+          <td class="num">{{ row.uninvoiced }}</td><td class="num">{{ row.cost_cny }}</td>
+          <td class="num">{{ row.payable_cny }}</td><td class="num">{{ row.fx_difference_cny }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <table class="ledger">
+        <thead><tr><th>发票</th><th>币种</th><th class="num">开票原币</th><th class="num">开票日汇率</th>
+        <th class="num">成本 CNY</th><th class="num">应付 CNY</th><th class="num">汇兑差异</th></tr></thead>
+        <tbody>
+        {% for invoice in invoices %}
+          <tr><td>{{ invoice.doc_no }}</td><td>{{ invoice.currency }}</td>
+          <td class="num">{{ invoice.original_amount }}</td><td class="num">{{ invoice.exchange_rate }}</td>
+          <td class="num">{{ invoice.cost_cny }}</td><td class="num">{{ invoice.payable_cny }}</td>
+          <td class="num">{{ invoice.fx_difference_cny }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <table class="ledger">
+        <thead><tr><th>发票</th><th>验收</th><th>币种</th><th class="num">核销原币</th>
+        <th class="num">收货日汇率</th><th class="num">开票日汇率</th><th class="num">成本 CNY</th>
+        <th class="num">应付 CNY</th><th class="num">汇兑差异</th></tr></thead>
+        <tbody>
+        {% for invoice in invoices %}{% for item in invoice.allocations %}
+          <tr><td>{{ invoice.doc_no }}</td><td>{{ item.acceptance_doc_no }}</td><td>{{ invoice.currency }}</td>
+          <td class="num">{{ item.amount }}</td><td class="num">{{ item.receipt_rate }}</td>
+          <td class="num">{{ item.invoice_rate }}</td><td class="num">{{ item.cost_cny }}</td>
+          <td class="num">{{ item.payable_cny }}</td><td class="num">{{ item.fx_difference_cny }}</td></tr>
+        {% endfor %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 </div>
 {% endblock %}
-
+{% block run_label %}核销并落账{% endblock %}
+{% block scripts %}<script src="/static/batches.js"></script>{% endblock %}
